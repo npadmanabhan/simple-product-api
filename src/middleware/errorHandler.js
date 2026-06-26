@@ -1,5 +1,7 @@
 'use strict';
 
+const logger = require('../utils/logger');
+
 // eslint-disable-next-line no-unused-vars
 const errorHandler = (err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
@@ -22,6 +24,17 @@ const errorHandler = (err, req, res, next) => {
   // Mongoose cast error (invalid ObjectId)
   if (err.name === 'CastError') {
     return res.status(400).json({ success: false, error: 'Invalid ID format' });
+  }
+
+  // Log unexpected server errors so they appear in Cloud Logging
+  if (status >= 500) {
+    logger.error('Unhandled server error', {
+      method: req.method,
+      url: req.originalUrl,
+      status,
+      error: err.message,
+      stack: err.stack,
+    });
   }
 
   return res.status(status).json({ success: false, error: err.message || 'Internal Server Error' });
