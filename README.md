@@ -28,10 +28,54 @@ npm start
 
 ## Environment Variables
 
-| Variable    | Description                | Default                                 |
-|-------------|----------------------------|-----------------------------------------|
-| `PORT`      | Port the server listens on | `3000`                                  |
-| `MONGO_URI` | MongoDB connection string  | `mongodb://localhost:27017/product-api` |
+| Variable          | Description                                      | Default                                 |
+|-------------------|--------------------------------------------------|-----------------------------------------|
+| `PORT`            | Port the server listens on                       | `3000`                                  |
+| `MONGO_URI`       | MongoDB connection string (**required**)         | —                                       |
+| `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins     | `http://localhost:5173`                 |
+| `NODE_ENV`        | Runtime environment (`development`/`production`) | `development`                           |
+| `LOG_LEVEL`       | Log verbosity (`error`/`warn`/`info`/`debug`)    | `info`                                  |
+
+## Docker
+
+### Build
+
+```bash
+docker build -t product-api .
+```
+
+### Run locally
+
+Requires a reachable MongoDB instance. `host.docker.internal` resolves to the host machine on Docker Desktop (Mac/Windows/WSL2).
+
+```bash
+docker run --rm \
+  -e MONGO_URI=mongodb://host.docker.internal:27017/product-api \
+  -e ALLOWED_ORIGINS=http://localhost:8080 \
+  -p 3000:3000 \
+  product-api
+```
+
+Verify the container is healthy:
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok","db":"connected"}
+```
+
+### Cloud Run
+
+Cloud Run injects a `PORT` environment variable automatically — the server reads it via `process.env.PORT`. Set the remaining variables as Cloud Run environment variables or Secret Manager references:
+
+| Variable          | Where to set              |
+|-------------------|---------------------------|
+| `MONGO_URI`       | Secret Manager (sensitive)|
+| `ALLOWED_ORIGINS` | Cloud Run env var         |
+| `LOG_LEVEL`       | Cloud Run env var         |
+
+The `/health` endpoint returns `200` when MongoDB is reachable and `503` when it is not — configure it as the Cloud Run health check path.
+
+---
 
 ## API Reference
 
