@@ -205,3 +205,80 @@ npm test
 ```
 
 20 tests covering all endpoints, validation rules, and error cases.
+
+---
+
+## CI/CD
+
+The pipeline (`.github/workflows/ci.yml`) runs on every push and pull request to `master`:
+
+1. **Test** — `npm ci` + `npm test` (runs on PRs and pushes)
+2. **Build & Push** — builds the Docker image and pushes to Google Artifact Registry (pushes to `master` only)
+
+Images are tagged `latest` and `sha-<short>` (e.g. `sha-a1b2c3d`) for immutable rollbacks.
+
+### Required GitHub configuration
+
+Set the following in **Settings → Secrets and variables → Actions**:
+
+| Name | Type | Value |
+|------|------|-------|
+| `WIF_PROVIDER` | Secret | `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| `WIF_SERVICE_ACCOUNT` | Secret | `github-actions@PROJECT_ID.iam.gserviceaccount.com` |
+| `GCP_PROJECT_ID` | Variable | your GCP project ID |
+| `GAR_REGION` | Variable | Artifact Registry region, e.g. `us-central1` |
+| `GAR_REPO` | Variable | Artifact Registry repository name, e.g. `product-images` |
+
+### One-time GCP setup
+
+```bash
+export PROJECT_ID=<your-project-id>
+export REGION=us-central1
+export REPO=product-images
+export SA=github-actions
+
+# Artifact Registry repository
+gcloud artifacts repositories create $REPO \
+  --repository-format=docker --location=$REGION --project=$PROJECT_ID
+
+# Service account
+gcloud iam service-accounts create $SA --project=$PROJECT_ID
+
+# Grant push access
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+# Workload Identity Pool
+gcloud iam workload-identity-pools create github-pool \
+  --location=global --project=$PROJECT_ID
+
+# GitHub OIDC provider
+gcloud iam workload-identity-pools providers create-oidc github-provider \
+  --location=global \
+  --workload-identity-pool=github-pool \
+  --issuer-uri=https://token.actions.githubusercontent.com \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --project=$PROJECT_ID
+
+# Allow this repo to impersonate the service account
+POOL_RESOURCE=$(gcloud iam workload-identity-pools describe github-pool \
+  --location=global --project=$PROJECT_ID --format='value(name)')
+
+gcloud iam service-accounts add-iam-policy-binding \
+  $SA@$PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/iam.workloadIdentityUser \
+  --member="principalSet://iam.googleapis.com/$POOL_RESOURCE/attribute.repository/npadmanabhan/simple-product-api"
+```
+
+Retrieve the values for the GitHub secrets:
+
+```bash
+# WIF_PROVIDER
+gcloud iam workload-identity-pools providers describe github-provider \
+  --location=global --workload-identity-pool=github-pool \
+  --project=$PROJECT_ID --format='value(name)'
+
+# WIF_SERVICE_ACCOUNT
+echo "$SA@$PROJECT_ID.iam.gserviceaccount.com"
+```
